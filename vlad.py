@@ -1,5 +1,5 @@
 
-import pickle
+from scikit import pickle
 from sklearn.linear_model import Ridge
 import torch
 import numpy as np

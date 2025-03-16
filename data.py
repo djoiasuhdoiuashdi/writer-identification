@@ -1,44 +1,40 @@
+# python
 import os
 from PIL import Image
-import torch
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms
+from torch.utils.data import Dataset
+from torchvision.datasets.vision import VisionDataset
 
-class ResnetDataset(Dataset):
-    def __init__(self, data_dir, transform=None):
-        """
-        Args:
-            data_dir (string): Directory with all the images.
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
-        """
-        self.data_dir = data_dir
-        self.transform = transform
-        # Example: Assuming that data_dir contains subdirectories for each class.
-        # You can modify this part based on how your data is organized.
-        self.classes = sorted(os.listdir(data_dir))
-        self.images = []
-        self.labels = []
+class ResnetDataset(VisionDataset):
+    def __init__(self, root: str, transform=None, target_transform=None, train: bool = True) -> None:
+        super().__init__(root, transform=transform, target_transform=target_transform)
+        self.train = train
+
+        # Use sorted subfolder names as class names.
+        self.classes = sorted(entry for entry in os.listdir(root)
+                              if os.path.isdir(os.path.join(root, entry)))
+        self.class_to_idx = {cls: idx for idx, cls in enumerate(self.classes)}
+
+        # Build a list of image file paths and targets (without preloading image data).
+        self.samples = []
         for label, cls in enumerate(self.classes):
-            class_dir = os.path.join(data_dir, cls)
-            # We assume each class directory contains image files.
+            class_dir = os.path.join(root, cls)
             for fname in os.listdir(class_dir):
                 if fname.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
-                    self.images.append(os.path.join(class_dir, fname))
-                    self.labels.append(label)
+                    path = os.path.join(class_dir, fname)
+                    self.samples.append((path, label))
 
-    def __len__(self):
-        return len(self.images)
+    def __getitem__(self, index: int):
+        # Retrieve file path and corresponding target.
+        img_path, target = self.samples[index]
 
-    def __getitem__(self, idx):
-        # Load image and label
-        img_path = self.images[idx]
-        image = Image.open(img_path).convert("RGB")
-        label = self.labels[idx]
+        # Load the image file on the fly.
+        img = Image.open(img_path).convert("RGB")
 
-        if self.transform:
-            image = self.transform(image)
+        if self.transform is not None:
+            img = self.transform(img)
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+        return img, target
 
-        # Optionally convert label to tensor if needed.
-        # For classification problems in PyTorch, labels are often kept as integers.
-        return image, label
+    def __len__(self) -> int:
+        return len(self.samples)

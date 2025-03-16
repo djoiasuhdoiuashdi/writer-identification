@@ -1,7 +1,7 @@
 import argparse
 import os
+import shutil
 import time
-from importlib.metadata import requires
 
 import torch
 import torch.nn as nn
@@ -14,6 +14,8 @@ import torchvision.datasets as datasets
 import resnet
 from data import ResnetDataset
 from torch.utils.data import random_split
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 
 model_names = sorted(name for name in resnet.__dict__
     if name.islower() and not name.startswith("__")
@@ -59,6 +61,8 @@ parser.add_argument('--save-every', dest='save_every',
                     type=int, default=10)
 parser.add_argument("--input_dir", type=str, required=True)
 parser.add_argument("--output_dir", type=str, required=True)
+
+
 best_prec1 = 0
 
 
@@ -74,48 +78,94 @@ def main():
     model = torch.nn.DataParallel(resnet.__dict__[args.arch]())
     model.cuda()
 
+    # optionally resume from a checkpoint
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print("=> loading checkpoint '{}'".format(args.resume))
+            checkpoint = torch.load(args.resume)
+            args.start_epoch = checkpoint['epoch']
+            best_prec1 = checkpoint['best_prec1']
+            model.load_state_dict(checkpoint['state_dict'])
+            print("=> loaded checkpoint '{}' (epoch {})"
+                  .format(args.evaluate, checkpoint['epoch']))
+        else:
+            print("=> no checkpoint found at '{}'".format(args.resume))
+
     cudnn.benchmark = True
 
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
 
-    full_dataset = ResnetDataset(args.input_dir, transform=transforms.Compose([
-        transforms.ToTensor(),
-        normalize,
-    ]))
+    ## MY CODE
 
-    dataset_size = len(full_dataset)
-    train_size = int(0.8 * dataset_size)  # 80% for training
-    val_size = dataset_size - train_size  # 20% for validation
-
-    train_dataset, val_dataset = random_split(full_dataset, [train_size, val_size])
-    train_dataset.dataset.transform = transforms.Compose([
+    transform_train = transforms.Compose([
         transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(32, 4),
-        transforms.ToTensor(),
-        normalize,
-    ])
-    val_dataset.dataset.transform = transforms.Compose([
+        transforms.RandomCrop(32, padding=4),  # padding value here is 4 (similar to CIFAR10)
         transforms.ToTensor(),
         normalize,
     ])
 
-    # Create data loaders
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.workers,
-        pin_memory=True
-    )
+    transform_val = transforms.Compose([
+        transforms.ToTensor(),
+        normalize,
+    ])
 
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.workers,
-        pin_memory=True
-    )
+    full_dataset = ResnetDataset(root=args.input_dir, transform=None, train=True)
+
+    train_size = int(0.8 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    train_subset, val_subset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
+
+    class TransformSubset(Dataset):
+        def __init__(self, subset, transform):
+            self.subset = subset
+            self.transform = transform
+
+        def __getitem__(self, index):
+            # The original dataset returns a PIL image since transform was None when loading
+            img, target = self.subset[index]
+            if self.transform is not None:
+                img = self.transform(img)
+            return img, target
+
+        def __len__(self):
+            return len(self.subset)
+
+    train_dataset = TransformSubset(train_subset, transform_train)
+    val_dataset = TransformSubset(val_subset, transform_val)
+
+    # train_loader = DataLoader(ResnetDataset(args.input_dir, train=True, transform=transforms.Compose([
+    #     transforms.RandomHorizontalFlip(),
+    #     transforms.RandomCrop(32, 4),
+    #     transforms.ToTensor(),
+    #     normalize,
+    # ])),
+    #                           batch_size=args.batch_size,
+    #                           shuffle=True,
+    #                           num_workers=2,
+    #                           pin_memory=False)
+    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False, num_workers=args.workers, pin_memory=True)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
+
+    ## MY CODE
+
+    # train_loader = torch.utils.data.DataLoader(
+    #     datasets.CIFAR10(root='./data', train=True, transform=transforms.Compose([
+    #         transforms.RandomHorizontalFlip(),
+    #         transforms.RandomCrop(32, 4),
+    #         transforms.ToTensor(),
+    #         normalize,
+    #     ]), download=True),
+    #     batch_size=args.batch_size, shuffle=True, prefetch_factor=3,
+    #     num_workers=args.workers, pin_memory=True)
+
+    # val_loader = torch.utils.data.DataLoader(
+    #     datasets.CIFAR10(root='./data', train=False, transform=transforms.Compose([
+    #         transforms.ToTensor(),
+    #         normalize,
+    #     ])),
+    #     batch_size=128, shuffle=False,
+    #     num_workers=args.workers, pin_memory=True)
 
     # define loss function (criterion) and optimizer
     criterion = nn.CrossEntropyLoss().cuda()
@@ -180,7 +230,6 @@ def train(train_loader, model, criterion, optimizer, epoch):
 
     # switch to train mode
     model.train()
-    print("model is now in train mode")
 
     end = time.time()
     for i, (input, target) in enumerate(train_loader):

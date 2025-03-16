@@ -185,7 +185,7 @@ if __name__ == "__main__":
     assert args.win_size % 2 == 0, 'win_size must be even'
 
     num_cores = int(multiprocessing.cpu_count() / 2)
-    # num_cores = 10
+    num_cores = 10
     path_to_centers = ''
 
     files = [f for f in glob.glob(args.in_dir[0] + '/**/*.*', recursive=True) if os.path.isfile(f) and is_image_file(f)]
@@ -222,6 +222,12 @@ if __name__ == "__main__":
     logging.info("starting KMeans (centers: {})".format(args.number_of_clusters))
     # km = KMeans(n_clusters=number_of_clusters, random_state=0, n_jobs=-1, verbose=0).fit(desc)
     import sklearn.cluster
+
+    # Add right before creating the KMeans model
+    if desc.shape[0] < args.number_of_clusters:
+        logging.warning(
+            f"Reducing number of clusters from {args.number_of_clusters} to {desc.shape[0]} due to insufficient samples.")
+        args.number_of_clusters = max(1, desc.shape[0])  # Ensure at least one cluster
 
     kmeans = sklearn.cluster.MiniBatchKMeans(n_clusters=args.number_of_clusters, compute_labels=False,
                                              batch_size=10000 if args.number_of_clusters <= 1000 else 50000)
