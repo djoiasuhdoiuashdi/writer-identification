@@ -53,15 +53,13 @@ parser.add_argument('--pretrained', dest='pretrained', action='store_true',
                     help='use pre-trained model')
 parser.add_argument('--half', dest='half', action='store_true',
                     help='use half-precision(16-bit) ')
-parser.add_argument('--save-dir', dest='save_dir',
+parser.add_argument('--output_dir', dest='save_dir',
                     help='The directory used to save the trained models',
                     default='save_temp', type=str)
 parser.add_argument('--save-every', dest='save_every',
                     help='Saves checkpoints at every specified number of epochs',
                     type=int, default=10)
 parser.add_argument("--input_dir", type=str, required=True)
-parser.add_argument("--output_dir", type=str, required=True)
-
 
 best_prec1 = 0
 
@@ -144,8 +142,9 @@ def main():
     #                           shuffle=True,
     #                           num_workers=2,
     #                           pin_memory=False)
-    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False, num_workers=args.workers, pin_memory=True)
+
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False, num_workers=args.workers, pin_memory=True)
 
     ## MY CODE
 
