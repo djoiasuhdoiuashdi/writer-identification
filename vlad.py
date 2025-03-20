@@ -10,7 +10,7 @@ from sklearn.neighbors import KDTree
 
 class VLAD:
     def __init__(self, n_clusters=100, n_batchsize=1000000, gmp=False, gamma=1000, powernorm=True, from_dir = None):
-         self.kmeans = MiniBatchKMeans(n_clusters=n_clusters, n_init=1, batch_size=n_batchsize, verbose=1)
+         self.kmeans = MiniBatchKMeans(n_clusters=n_clusters, n_init=1, batch_size=n_batchsize, verbose=1, random_state=41)
          self.gmp = gmp
          self.gamma = gamma
          self.powernorm = powernorm

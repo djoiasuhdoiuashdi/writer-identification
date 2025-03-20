@@ -91,14 +91,15 @@ def main():
 
     cudnn.benchmark = True
 
-    normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                                     std=[0.229, 0.224, 0.225])
+    # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
+    #                                  std=[0.229, 0.224, 0.225])
+    normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
 
     ## MY CODE
 
     transform_train = transforms.Compose([
         transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(32, padding=4),  # padding value here is 4 (similar to CIFAR10)
+        transforms.RandomCrop(32, 4),  # padding value here is 4 (similar to CIFAR10)
         transforms.ToTensor(),
         normalize,
     ])
@@ -132,19 +133,8 @@ def main():
     train_dataset = TransformSubset(train_subset, transform_train)
     val_dataset = TransformSubset(val_subset, transform_val)
 
-    # train_loader = DataLoader(ResnetDataset(args.input_dir, train=True, transform=transforms.Compose([
-    #     transforms.RandomHorizontalFlip(),
-    #     transforms.RandomCrop(32, 4),
-    #     transforms.ToTensor(),
-    #     normalize,
-    # ])),
-    #                           batch_size=args.batch_size,
-    #                           shuffle=True,
-    #                           num_workers=2,
-    #                           pin_memory=False)
-
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
-    val_loader = DataLoader(val_dataset, batch_size=128, shuffle=False, num_workers=args.workers, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=args.workers, pin_memory=True)
 
     ## MY CODE
 
@@ -177,15 +167,10 @@ def main():
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
+    # lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
+    #                                                     milestones=[100, 150], last_epoch=args.start_epoch - 1)
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                                        milestones=[100, 150], last_epoch=args.start_epoch - 1)
-
-    if args.arch in ['resnet1202', 'resnet110']:
-        # for resnet1202 original paper uses lr=0.01 for first 400 minibatches for warm-up
-        # then switch back. In this setup it will correspond for first epoch.
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = args.lr*0.1
-
+                                                        milestones=[30, 60, 90], last_epoch=args.start_epoch - 1)
 
     if args.evaluate:
         validate(val_loader, model, criterion)
