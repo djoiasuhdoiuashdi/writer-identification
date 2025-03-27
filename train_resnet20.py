@@ -1,21 +1,49 @@
 import argparse
 import os
-import shutil
 import time
 
 import torch
 import torch.nn as nn
-import torch.nn.parallel
 import torch.backends.cudnn as cudnn
-import torch.optim
-import torch.utils.data
+from torch.utils.data import Dataset, DataLoader, random_split
 import torchvision.transforms as transforms
-import torchvision.datasets as datasets
 import resnet
-from data import ResnetDataset
-from torch.utils.data import random_split
-from torch.utils.data import Dataset
-from torch.utils.data import DataLoader
+from dataset import ResnetDataset
+
+import wandb
+
+# Initialize wandb
+
+
+# sweep_config = {
+#     'method': 'bayes',
+#     'metric': {'name': 'val_accuracy', 'goal': 'maximize'},
+#     'parameters': {
+#         'learning_rate': {
+#             'distribution': 'log_uniform_values',
+#             'min': 1e-4,
+#             'max': 0.1
+#         },
+#         'batch_size': {'values': [128, 256, 512]},
+#         'weight_decay': {
+#             'distribution': 'log_uniform_values',
+#             'min': 1e-4,
+#             'max': 1e-3
+#         },
+#         'momentum': {'values': [0.85, 0.9, 0.95]}
+#     },
+#     'early_terminate': {
+#         'type': 'hyperband',
+#         'min_iter': 15,
+#         'max_iter': 60,
+#         's': 2,
+#         'eta': 3
+#     }
+# }
+
+
+# sweep_id = wandb.sweep(sweep_config, project="ResNet20")
+
 
 model_names = sorted(name for name in resnet.__dict__
     if name.islower() and not name.startswith("__")
@@ -68,6 +96,26 @@ def main():
     global args, best_prec1
     args = parser.parse_args()
 
+    wandb.init(project="ResNet20")
+    config = {
+        "learning_rate": args.lr,
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "model": "ResNet20",
+        "weight_decay": args.weight_decay,
+        "momentum": args.momentum
+    }
+    wandb.config.update(config)
+    config = wandb.config
+    args.epochs = config.epochs
+    # args.half = True
+    args.lr = config.learning_rate
+    args.batch_size = config.batch_size
+    args.weight_decay = config.weight_decay
+    args.momentum = config.momentum
+
+
+
 
     # Check the save_dir exists or not
     if not os.path.exists(args.save_dir):
@@ -93,13 +141,13 @@ def main():
 
     # normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
     #                                  std=[0.229, 0.224, 0.225])
-    normalize = transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+    normalize = transforms.Normalize(mean=[0.5], std=[0.5])
 
     ## MY CODE
 
     transform_train = transforms.Compose([
         transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(32, 4),  # padding value here is 4 (similar to CIFAR10)
+        transforms.RandomCrop(32, 4),
         transforms.ToTensor(),
         normalize,
     ])
@@ -109,31 +157,30 @@ def main():
         normalize,
     ])
 
-    full_dataset = ResnetDataset(root=args.input_dir, transform=None, train=True)
+    full_dataset = ResnetDataset(root=args.input_dir)
 
-    train_size = int(0.8 * len(full_dataset))
-    val_size = len(full_dataset) - train_size
-    train_subset, val_subset = torch.utils.data.random_split(full_dataset, [train_size, val_size])
-
-    class TransformSubset(Dataset):
-        def __init__(self, subset, transform):
+    class TransformDataset(Dataset):
+        def __init__(self, subset, transform=None):
             self.subset = subset
             self.transform = transform
 
         def __getitem__(self, index):
-            # The original dataset returns a PIL image since transform was None when loading
-            img, target = self.subset[index]
-            if self.transform is not None:
+            img, label = self.subset[index]
+            if self.transform:
                 img = self.transform(img)
-            return img, target
+            return img, label
 
         def __len__(self):
             return len(self.subset)
 
-    train_dataset = TransformSubset(train_subset, transform_train)
-    val_dataset = TransformSubset(val_subset, transform_val)
+    train_size = int(0.8 * len(full_dataset))
+    val_size = len(full_dataset) - train_size
+    train_subset, val_subset = random_split(full_dataset, [train_size, val_size])
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True)
+    train_dataset = TransformDataset(train_subset, transform_train)
+    val_dataset = TransformDataset(val_subset, transform_val)
+
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=True, prefetch_factor=10000)
     val_loader = DataLoader(val_dataset, batch_size=256, shuffle=False, num_workers=args.workers, pin_memory=True)
 
     ## MY CODE
@@ -167,10 +214,8 @@ def main():
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
 
-    # lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-    #                                                     milestones=[100, 150], last_epoch=args.start_epoch - 1)
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                                        milestones=[30, 60, 90], last_epoch=args.start_epoch - 1)
+                                                        milestones=[ 50,100, 150], last_epoch=args.start_epoch - 1)
 
     if args.evaluate:
         validate(val_loader, model, criterion)
@@ -179,16 +224,27 @@ def main():
     for epoch in range(args.start_epoch, args.epochs):
 
         # train for one epoch
+        current_lr = optimizer.param_groups[0]['lr']
         print('current lr {:.5e}'.format(optimizer.param_groups[0]['lr']))
-        train(train_loader, model, criterion, optimizer, epoch)
+        train_loss, train_acc = train(train_loader, model, criterion, optimizer, epoch)
         lr_scheduler.step()
 
         # evaluate on validation set
-        prec1 = validate(val_loader, model, criterion)
+        val_loss, prec1 = validate(val_loader, model, criterion)
 
         # remember best prec@1 and save checkpoint
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
+
+        wandb.log({
+            "epoch": epoch,
+            "train_loss": train_loss,
+            "train_accuracy": train_acc,
+            "val_loss": val_loss,
+            "val_accuracy": prec1,
+            "learning_rate": current_lr,
+            "best_accuracy": best_prec1
+        })
 
         if epoch > 0 and epoch % args.save_every == 0:
             save_checkpoint({
@@ -256,6 +312,8 @@ def train(train_loader, model, criterion, optimizer, epoch):
                       epoch, i, len(train_loader), batch_time=batch_time,
                       data_time=data_time, loss=losses, top1=top1))
 
+    return losses.avg, top1.avg
+
 
 def validate(val_loader, model, criterion):
     """
@@ -305,7 +363,7 @@ def validate(val_loader, model, criterion):
     print(' * Prec@1 {top1.avg:.3f}'
           .format(top1=top1))
 
-    return top1.avg
+    return losses.avg, top1.avg
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     """
@@ -348,4 +406,5 @@ def accuracy(output, target, topk=(1,)):
 
 
 if __name__ == '__main__':
+    # wandb.agent(sweep_id, function=main, count=50)
     main()
