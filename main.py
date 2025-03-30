@@ -2,6 +2,8 @@ import json
 import os
 import random
 import shutil
+
+import pandas as pd
 from sklearn.metrics import confusion_matrix
 import subprocess
 import sys
@@ -19,6 +21,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tabulate import tabulate
 from sklearn.neighbors import NearestNeighbors
+import retrieval_eval
+import itertools
+from sklearn.model_selection import GroupShuffleSplit
 
 WINDOW_SIZE = 32
 VLAD_NUM_CLUSTER = 128
@@ -38,6 +43,7 @@ def get_patch(img, px, py):
                                                                  roi.shape[0], roi.shape[1])
     return roi
 
+
 def extract_patches_vlad(net, image_path, device):
     img = cv2.imread(image_path)
     gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -55,46 +61,53 @@ def extract_patches_vlad(net, image_path, device):
         if patch_gray is None or (x, y) in seen:
             continue
 
-        if img_bin[y,x] != 0:
+        if img_bin[y, x] != 0:
             continue
 
-        if extract_patches.black_pixels(patch_gray) > (BLACK_PIXEL_THRESHOLD * num_pix) and BLACK_PIXEL_THRESHOLD != -1 or extract_patches.white_pixels(patch_gray) > (WHITE_PIXEL_THRESHOLD * num_pix):
+        if extract_patches.black_pixels(patch_gray) > (
+                BLACK_PIXEL_THRESHOLD * num_pix) and BLACK_PIXEL_THRESHOLD != -1 or extract_patches.white_pixels(
+            patch_gray) > (WHITE_PIXEL_THRESHOLD * num_pix):
             continue
 
         seen.add((x, y))
         patches.append(patch_gray)
 
-    current_out = None
-
-    def hook(module, inp, out):
-        nonlocal current_out
-        current_out = out.detach()
-
-    net.layer3.register_forward_hook(hook)
-
+    features = []
+    net.linear = torch.nn.Identity()
+    transform = transforms.ToTensor()
     with torch.no_grad():
-        if patches:
-            all_features = []
-            batch_size = 64
+        for i in range(0, len(patches), 64):
+            batch_patches = patches[i:i + 64]
+            # Convert patch images to tensor and stack into a batch
+            batch_tensor = torch.stack([transform(p) for p in batch_patches]).to(device)
+            # Forward pass through the network
+            batch_output = net(batch_tensor)
+            features.append(batch_output.cpu())
 
-            for i in range(0, len(patches), batch_size):
-                batch_patches = patches[i:i + batch_size]
-                batch_tensor = torch.stack([
-                    transforms.ToTensor()(p) for p in batch_patches
-                ]).to(device)
-                net(batch_tensor)
-                current_out = torch.nn.functional.avg_pool2d(current_out, current_out.size()[3])
-                batch_features = current_out.view(current_out.size(0), -1)
-                all_features.append(batch_features.cpu())
-
-            return np.vstack(all_features)
-        return None
-
-
+    features = torch.cat(features, dim=0)
+    return features
 
 
 def main():
-
+    retrieval_paper = [
+        ["Mohammed et al. [23]", "30", "", "", ""],
+        ["SIFT (Baseline)", "28", "70", "84", "30.3"],
+        ["Su Binarization + SIFT", "40", "72", "86", "30.5"],
+        ["AngU-Net + SIFT", "46", "84", "88", "36.5"],
+        ["AngU-Net + R-SIFT", "48", "84", "92", "42.8"],
+        ["AngU-Net + Cl-S [10]", "52", "82", "94", "42.2"],
+    ]
+    classification_paper = [
+        ["Mohammed et al. [23]", "26", ""],
+        ["Nasir & Siddiqi [24]", "54", ""],
+        ["Nasir et al. [25]", "64", ""],
+        ["AngU-Net + SIFT + NN", "47", "83"],
+        ["AngU-Net + SIFT + SVM", "57", "87"],
+        ["AngU-Net + R-SIFT + NN", "53", "77"],
+        ["AngU-Net + R-SIFT + SVM", "60", "80"]
+    ]
+    retrieval_df = pd.DataFrame(retrieval_paper, columns=["Method", "Top-1", "Top-5", "Top-10", "mAP"])
+    identification_df = pd.DataFrame(classification_paper, columns=["Method", "Top-1", "Top-5"])
     path = "./extract_patches_input"
     dirs = sorted(os.listdir(path=path))
     for directory in dirs:
@@ -107,22 +120,21 @@ def main():
         output_path = os.path.join("extract_patches_output", directory)
         resnet_output_path = os.path.join("resnet20_output", directory)
 
-
-        if not os.path.exists("extract_patches_output"):
-            os.mkdir("extract_patches_output")
-        if not os.path.exists(output_path):
-            os.mkdir(output_path)
-        else:
-            shutil.rmtree(output_path)
-            os.mkdir(output_path)
-        subprocess.run([sys.executable, 'extract_patches.py', "--in_dir", input_path, "--out_dir", output_path, "--num_of_clusters", f"{RESNET_NUM_CLUSTER}", "--centered", "True", "--black_pixel_thresh", f"{BLACK_PIXEL_THRESHOLD}", "--white_pixel_thresh", f"{WHITE_PIXEL_THRESHOLD}", "--scale", "1"]
-                               , stdout=None, stderr=None)
-        center_path = os.path.join(output_path, 'centers.pkl')
-        parameter_path = os.path.join(output_path, 'db-creation-parameters.json')
-        if os.path.exists(center_path):
-            os.remove(center_path)
-        if os.path.exists(parameter_path):
-            os.remove(parameter_path)
+        # if not os.path.exists("extract_patches_output"):
+        #     os.mkdir("extract_patches_output")
+        # if not os.path.exists(output_path):
+        #     os.mkdir(output_path)
+        # else:
+        #     shutil.rmtree(output_path)
+        #     os.mkdir(output_path)
+        # subprocess.run([sys.executable, 'extract_patches.py', "--in_dir", input_path, "--out_dir", output_path, "--num_of_clusters", f"{RESNET_NUM_CLUSTER}", "--centered", "True", "--black_pixel_thresh", f"{BLACK_PIXEL_THRESHOLD}", "--white_pixel_thresh", f"{WHITE_PIXEL_THRESHOLD}", "--scale", "1"]
+        #                        , stdout=None, stderr=None)
+        # center_path = os.path.join(output_path, 'centers.pkl')
+        # parameter_path = os.path.join(output_path, 'db-creation-parameters.json')
+        # if os.path.exists(center_path):
+        #     os.remove(center_path)
+        # if os.path.exists(parameter_path):
+        #     os.remove(parameter_path)
 
         # ---------------------------------------------------------------------------------------------------
         # TRAIN RESNET
@@ -133,18 +145,17 @@ def main():
         if not os.path.exists(resnet_output_path):
             os.mkdir(resnet_output_path)
 
-
-        subprocess.run([sys.executable, 'train_resnet20.py',
-            "--arch", "resnet20",
-            "--workers", "8",
-            "--epochs", "200",
-            "--batch-size", "32",
-            "--lr", "0.01",
-            "--momentum", "0.95",
-            "--weight-decay", "0.00065",
-            "--output_dir", resnet_output_path,
-            "--input_dir", output_path],
-            stdout=None, stderr=None)
+        # subprocess.run([sys.executable, 'train_resnet20.py',
+        #     "--arch", "resnet20",
+        #     "--workers", "8",
+        #     "--epochs", "225",
+        #     "--batch-size", "32",
+        #     "--lr", "0.01",
+        #     "--momentum", "0.95",
+        #     "--weight-decay", "0.00065",
+        #     "--output_dir", resnet_output_path,
+        #     "--input_dir", output_path],
+        #     stdout=None, stderr=None)
 
         # ---------------------------------------------------------------------------------------------------
         # TRAIN VLAD
@@ -155,7 +166,6 @@ def main():
             os.makedirs("vlad_train_output")
         if not os.path.exists(vlad_train_output_path):
             os.makedirs(vlad_train_output_path)
-
 
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         net = resnet.__dict__["resnet20"](num_classes=RESNET_NUM_CLUSTER)
@@ -190,7 +200,6 @@ def main():
         if not os.path.exists(vlad_inference_output_path):
             os.makedirs(vlad_inference_output_path)
 
-
         VLAD.load(os.path.join(vlad_train_output_path, "model.pkl"))
         for input_image in sorted(os.listdir(path=os.path.join(path, directory))):
             print(f"Inferencing {input_image} with VLAD")
@@ -198,6 +207,27 @@ def main():
                                             os.path.join(path, directory, input_image), device)
             vlad_output = VLAD.encode(features)
             np.save(os.path.join(vlad_inference_output_path, input_image.replace("tiff", "") + "npy"), vlad_output)
+
+        stored_encodings = []
+        authors = []
+        for input_image in sorted(os.listdir(path=os.path.join(path, directory))):
+            base_image_path = os.path.join(vlad_inference_output_path, input_image.replace("tiff", "npy"))
+            base_image_encoding = np.load(base_image_path)
+            base_image_author = input_image.split("_")[0]
+            stored_encodings.append(base_image_encoding)
+            authors.append(base_image_author)
+
+        stored_encodings = np.vstack(stored_encodings)
+        author_to_id = {}
+        author_labels = []
+        for author in authors:
+            if author not in author_to_id:
+                author_to_id[author] = len(author_to_id)
+            author_labels.append(author_to_id[author])
+        retrieval = retrieval_eval.Retrieval()
+        res, tes = retrieval.eval(stored_encodings, author_labels)
+        print(tes)
+        mAP = res["map"] * 100
 
         # ---------------------------------------------------------------------------------------------------
         # SIMILARITY CALCULATION
@@ -214,7 +244,6 @@ def main():
         if not os.path.exists(evaluation_result_path):
             os.makedirs(evaluation_result_path)
 
-
         with open(os.path.join(similarity_output_path, "results.txt"), "w") as f:
             stats = []
             for input_image in sorted(os.listdir(path=os.path.join(path, directory))):
@@ -225,7 +254,8 @@ def main():
                 file_paths = []
 
                 for image_to_compare_to in sorted(os.listdir(vlad_inference_output_path)):
-                    if image_to_compare_to.endswith(".npy") and image_to_compare_to != os.path.basename(base_image_path):
+                    if image_to_compare_to.endswith(".npy") and image_to_compare_to != os.path.basename(
+                            base_image_path):
                         file_path = os.path.join(vlad_inference_output_path, image_to_compare_to)
                         stored_encodings.append(np.load(file_path))
                         file_paths.append(image_to_compare_to)
@@ -250,7 +280,6 @@ def main():
         with open(file_path, 'r') as file:
             data = json.load(file)
 
-
         total = len(data)
         top1_count = sum(1 for result in data if result["top1"])
         top5_count = sum(1 for result in data if result["top5"])
@@ -260,181 +289,79 @@ def main():
         top5_accuracy = (top5_count / total) * 100
         top10_accuracy = (top10_count / total) * 100
 
-        table_data = [
-            ["Mohammed et al. [23]", "30", "", "", ""],
-            ["SIFT (Baseline)", "28", "70", "84", "30.3"],
-            ["Su Binarization + SIFT", "40", "72", "86", "30.5"],
-            ["AngU-Net + SIFT", "46", "84", "88", "36.5"],
-            ["AngU-Net + R-SIFT", "48", "84", "92", "42.8"],
-            ["AngU-Net + Cl-S [10]", "52", "82", "94", "42.2"],
-            [directory, f"{round(top1_accuracy)}", f"{round(top5_accuracy)}", f"{round(top10_accuracy)}", ""]
-        ]
-        headers = ["Method", "Top-1", "Top-5", "Top-10", "mAP"]
-        print(tabulate(table_data, headers, tablefmt="grid"))
+        retrieval_df.loc[len(retrieval_df)] = [directory, round(top1_accuracy), round(top5_accuracy),
+                                               round(top10_accuracy), round(mAP)]
         with open(evaluation_result_path + "/Retrieval.txt", "w") as f:
-            f.write(tabulate(table_data, headers, tablefmt="grid"))
+            f.write(f"{round(top1_accuracy)} {round(top5_accuracy)} {round(top10_accuracy)} {round(mAP)}")
 
-        # ---------------------------------------------------------------------------------------------------
-        # HEATMAP GENERATION TODO: REWRITE
-        # ---------------------------------------------------------------------------------------------------
-        # print("Generating Heatmaps: ", directory)
-        #
-        #
-        # author_encodings = defaultdict(list)
-        # for base_image_path in sorted(os.listdir(vlad_inference_output_path)):
-        #     if base_image_path.endswith(".npy"):
-        #         file_path = os.path.join(vlad_inference_output_path, base_image_path)
-        #         base_image_author = base_image_path.split("_")[0]
-        #         encoding = np.load(file_path)
-        #         author_encodings[base_image_author].append(encoding)
-        #
-        # authors = sorted(author_encodings.keys())
-        # similarity_matrix = np.zeros((10,10))
-        #
-        # for i, author1 in enumerate(authors):
-        #     for j, author2 in enumerate(authors):
-        #         encodings_author1 = np.vstack(author_encodings[author1])
-        #         encodings_author2 = np.vstack(author_encodings[author2])
-        #         similarities = cosine_similarity(encodings_author1, encodings_author2)
-        #         avg_similarity = np.mean(similarities)
-        #         similarity_matrix[i, j] = avg_similarity
-        #
-        # plt.figure(figsize=(10, 8))
-        # sns.heatmap(
-        #     similarity_matrix,
-        #     cmap="Wistia",
-        #     xticklabels=authors,
-        #     yticklabels=authors,
-        #     annot=False,
-        #     vmin=0,
-        #     vmax=1
-        # )
-        # plt.title(f'Inter-scribe Similarity Heatmap - {directory}')
-        # plt.tight_layout()
-        #
-        # plt.savefig(os.path.join(evaluation_result_path, "scribe_similarity_heatmap.png"), dpi=300)
-        # plt.close()
-        #
-        #
-        # all_encodings = []
-        # for base_image_path in sorted(os.listdir(vlad_inference_output_path)):
-        #     if base_image_path.endswith(".npy"):
-        #         file_path = os.path.join(vlad_inference_output_path, base_image_path)
-        #         encoding = np.load(file_path)
-        #         all_encodings.append(encoding)
-        #
-        #
-        # all_encodings = np.vstack(all_encodings)
-        #
-        # similarity_matrix = cosine_similarity(all_encodings)
-        #
-        # plt.figure(figsize=(12, 10))
-        # sns.heatmap(
-        #     similarity_matrix,
-        #     cmap="Wistia",
-        #     annot=False,
-        #     vmin=0,
-        #     vmax=1
-        # )
-        #
-        # plt.title(f'Inter-image Similarity Heatmap - {directory}')
-        # plt.xlabel("Image Index")
-        # plt.ylabel("Image Index")
-        # plt.tight_layout()
-        #
-        # # Save the figure
-        # plt.savefig(os.path.join(evaluation_result_path, "image_similarity_heatmap.png"), dpi=300)
-        # plt.close()
-
-        #----------------------------------------------------------------------------------------------------
+        # ----------------------------------------------------------------------------------------------------
         # WRITER CLASSIFICATION
-        #----------------------------------------------------------------------------------------------------
+        # ----------------------------------------------------------------------------------------------------
+
         print("Writer Classification: ", directory)
-        training_set = []
-        training_labels = []
-        test_set = []
-        test_labels = []
-
-        author_count = defaultdict(int)
         files = sorted(os.listdir(vlad_inference_output_path))
-        # random.shuffle(files)
+
+        author_files = defaultdict(list)
         for file in files:
-            if file.endswith(".npy"):
-                file_path = os.path.join(vlad_inference_output_path, file)
-                encoding = np.load(file_path)
-                base_image_author = file.split("_")[0]
-                if author_count[base_image_author] < 2:
-                    training_set.append(encoding)
-                    training_labels.append(base_image_author)
-                    author_count[base_image_author] = author_count.get(base_image_author, 0) + 1
-                else:
-                    test_set.append(encoding)
-                    test_labels.append(base_image_author)
+            author = file.split("_")[0]  # Extract author ID from filename
+            file_path = os.path.join(vlad_inference_output_path, file)
+            author_files[author].append(file_path)
 
-        print("Testset:", len(test_set))
-        print("Trainingset:", len(training_set))
-        training_set = np.vstack(training_set)
-        test_set = np.vstack(test_set)
+        splits = []
+        authors = author_files.keys()
+        index_combinations = itertools.combinations(range(4), 2)
 
-        nn = KNeighborsClassifier(n_neighbors=5)
-        nn.fit(training_set, training_labels)
-        distances, indices = nn.kneighbors(test_set, n_neighbors=5)
-        training_labels = np.array(training_labels)
+        for i, j in index_combinations:
+            train_images = []
+            test_images = []
+            train_labels = []
+            test_labels = []
+            for author in authors:
+                file_list = author_files[author]
+                train_images.append(np.load(file_list[i]))
+                train_images.append(np.load(file_list[j]))
+                train_labels.append(author)
+                train_labels.append(author)
+                test_files = [file_list[k] for k in range(len(file_list)) if k != i and k != j]
+                for test_file in test_files:
+                    test_images.append(np.load(test_file))
+                    test_labels.append(author)
 
-        top1_count = 0
-        top5_count = 0
-        for i, neighbor_indices in enumerate(indices):
-            top5_predictions = training_labels[neighbor_indices]
-            if test_labels[i] == top5_predictions[0]:
-                top1_count += 1
-                top5_count += 1
-            elif test_labels[i] in top5_predictions:
-                top5_count += 1
+            splits.append((train_images, train_labels, test_images, test_labels))
 
-        total = len(indices)
-        top1_accuracy = (top1_count / total) * 100
-        top5_accuracy = (top5_count / total) * 100
+        split_results = []
 
-        table_data = [
-            ["Mohammed et al. [23]", "26", ""],
-            ["Nasir & Siddiqi [24]", "54", ""],
-            ["Nasir et al. [25]", "64", ""],
-            ["AngU-Net + SIFT + NN", "47", "83"],
-            ["AngU-Net + SIFT + SVM", "57", "87"],
-            ["AngU-Net + R-SIFT + NN", "53", "77"],
-            ["AngU-Net + R-SIFT + SVM", "60", "80"],
-            [directory, f"{round(top1_accuracy)}", f"{round(top5_accuracy)}"]
-        ]
-        headers = ["Method", "Top-1", "Top-5"]
-        print(tabulate(table_data, headers, tablefmt="grid"))
+        for training_set, training_labels, test_set, test_labels in splits:
+            training_set = np.vstack(training_set)
+            test_set = np.vstack(test_set)
+            nn = KNeighborsClassifier(n_neighbors=5)
+            nn.fit(training_set, training_labels)
+            distances, indices = nn.kneighbors(test_set, n_neighbors=5)
+            training_labels = np.array(training_labels)
+            top1_count = 0
+            top5_count = 0
+            total = len(test_labels)
+            for i, neighbor_indices in enumerate(indices):
+                top5_predictions = training_labels[neighbor_indices]
+                if test_labels[i] == top5_predictions[0]:
+                    top1_count += 1
+                    top5_count += 1
+                elif test_labels[i] in top5_predictions:
+                    top5_count += 1
+            top1_accuracy = (top1_count / total) * 100
+            top5_accuracy = (top5_count / total) * 100
+            split_results.append((top1_accuracy, top5_accuracy))
+
+        avg_top1 = sum(r[0] for r in split_results) / len(split_results)
+        avg_top5 = sum(r[1] for r in split_results) / len(split_results)
+        identification_df.loc[len(identification_df)] = [directory, round(avg_top1), round(avg_top5)]
+
         with open(evaluation_result_path + "/Classification.txt", "w") as f:
-            f.write(tabulate(table_data, headers, tablefmt="grid"))
+            f.write(f"{round(avg_top1)} {round(avg_top5)}")
 
-        # Generate confusion matrix TODO: REWRITE
-        # unique_labels = sorted(set(training_labels + test_labels))
-        # cm = confusion_matrix(
-        #     test_labels,
-        #     predictions,
-        #     labels=unique_labels
-        # )
-        #
-        # # Plot the confusion matrix
-        # plt.figure(figsize=(12, 10))
-        # sns.heatmap(
-        #     cm,
-        #     annot=True,
-        #     fmt='d',
-        #     cmap='Blues',
-        #     xticklabels=unique_labels,
-        #     yticklabels=unique_labels
-        # )
-        # plt.title(f'Writer Classification Confusion Matrix - {directory}')
-        # plt.xlabel('Predicted Label')
-        # plt.ylabel('True Label')
-        # plt.tight_layout()
-        #
-        # plt.savefig(os.path.join(evaluation_result_path, "writer_classification_confusion_matrix.png"), dpi=300)
-        # plt.close()
+    print(identification_df)
+    print(retrieval_df)
+
 
 if __name__ == "__main__":
     main()

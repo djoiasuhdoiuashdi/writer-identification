@@ -1,0 +1,37 @@
+#!/bin/bash
+#SBATCH --partition=zen3_0512_a100x2
+#SBATCH --qos=zen3_0512_a100x2
+#SBATCH --gres=gpu:1
+#SBATCH -J evaluate_binarization_on_grk50
+#SBATCH --array=0-25
+#SBATCH -t 02:00:00
+
+subfolders=(dplinknet_fmeasure \
+            dplinknet_pfmeasure \
+            dplinknet_psnr \
+            enhanced_dplinknet_fmeasure \
+            enhanced_dplinknet_pfmeasure \
+            enhanced_dplinknet_psnr \
+            enhanced_nafdpm_fmeasure \
+            enhanced_nafdpm_pfmeasure \
+            enhanced_nafdpm_psnr \
+            enhanced_robin_fmeasure \
+            enhanced_robin_pfmeasure \
+            enhanced_robin_psnr \
+            enhanced_unetbr \
+            GATOS \
+            nafdpm_fmeasure \
+            nafdpm_pfmeasure \
+            nafdpm_psnr \
+            NICK \
+            OTSU \
+            robin_fmeasure \
+            robin_pfmeasure \
+            robin_psnr \
+            SAUVOLA \
+            SU \
+            TRSINGH \
+            unetbr)
+
+current_folder=${subfolders[$SLURM_ARRAY_TASK_ID]}
+python process_subfolder.py --directory "${current_folder}"
