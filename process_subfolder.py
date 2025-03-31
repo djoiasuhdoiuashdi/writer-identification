@@ -5,7 +5,7 @@ import subprocess
 import sys
 import cv2
 import numpy as np
-from collections import OrderedDict, defaultdict
+from collections import OrderedDict
 from sklearn.metrics.pairwise import cosine_similarity
 import extract_patches
 import vlad
@@ -14,7 +14,7 @@ from sklearn.neighbors import KNeighborsClassifier
 import torchvision.transforms as transforms
 import torch
 import retrieval_eval
-import itertools
+
 import argparse
 from utils import get_author
 
@@ -93,24 +93,24 @@ def main():
     output_path = os.path.join("extract_patches_output", directory)
     resnet_output_path = os.path.join("resnet20_output", directory)
 
-    # if not os.path.exists("extract_patches_output"):
-    #     os.mkdir("extract_patches_output")
-    # if not os.path.exists(output_path):
-    #     os.mkdir(output_path)
-    # else:
-    #     shutil.rmtree(output_path)
-    #     os.mkdir(output_path)
-    # subprocess.run(
-    #     [sys.executable, 'extract_patches.py', "--in_dir", input_path, "--out_dir", output_path, "--num_of_clusters",
-    #      f"{RESNET_NUM_CLUSTER}", "--centered", "True", "--black_pixel_thresh", f"{BLACK_PIXEL_THRESHOLD}",
-    #      "--white_pixel_thresh", f"{WHITE_PIXEL_THRESHOLD}", "--scale", "1"]
-    #     , stdout=None, stderr=None)
-    # center_path = os.path.join(output_path, 'centers.pkl')
-    # parameter_path = os.path.join(output_path, 'db-creation-parameters.json')
-    # if os.path.exists(center_path):
-    #     os.remove(center_path)
-    # if os.path.exists(parameter_path):
-    #     os.remove(parameter_path)
+    if not os.path.exists("extract_patches_output"):
+        os.mkdir("extract_patches_output")
+    if not os.path.exists(output_path):
+        os.mkdir(output_path)
+    else:
+        shutil.rmtree(output_path)
+        os.mkdir(output_path)
+    subprocess.run(
+        [sys.executable, 'extract_patches.py', "--in_dir", input_path, "--out_dir", output_path, "--num_of_clusters",
+         f"{RESNET_NUM_CLUSTER}", "--centered", "True", "--black_pixel_thresh", f"{BLACK_PIXEL_THRESHOLD}",
+         "--white_pixel_thresh", f"{WHITE_PIXEL_THRESHOLD}", "--scale", "1"]
+        , stdout=None, stderr=None)
+    center_path = os.path.join(output_path, 'centers.pkl')
+    parameter_path = os.path.join(output_path, 'db-creation-parameters.json')
+    if os.path.exists(center_path):
+        os.remove(center_path)
+    if os.path.exists(parameter_path):
+        os.remove(parameter_path)
 
     # ---------------------------------------------------------------------------------------------------
     # TRAIN RESNET
@@ -121,17 +121,17 @@ def main():
     if not os.path.exists(resnet_output_path):
         os.mkdir(resnet_output_path)
 
-    # subprocess.run([sys.executable, 'train_resnet20.py',
-    #                 "--arch", "resnet20",
-    #                 "--workers", "8",
-    #                 "--epochs", "225",
-    #                 "--batch-size", "32",
-    #                 "--lr", "0.01",
-    #                 "--momentum", "0.95",
-    #                 "--weight-decay", "0.00065",
-    #                 "--output_dir", resnet_output_path,
-    #                 "--input_dir", output_path],
-    #                stdout=None, stderr=None)
+    subprocess.run([sys.executable, 'train_resnet20.py',
+                    "--arch", "resnet20",
+                    "--workers", "8",
+                    "--epochs", "2",
+                    "--batch-size", "32",
+                    "--lr", "0.01",
+                    "--momentum", "0.95",
+                    "--weight-decay", "0.00065",
+                    "--output_dir", resnet_output_path,
+                    "--input_dir", output_path],
+                   stdout=None, stderr=None)
 
     # ---------------------------------------------------------------------------------------------------
     # TRAIN VLAD
@@ -220,33 +220,33 @@ def main():
     if not os.path.exists(evaluation_result_path):
         os.makedirs(evaluation_result_path)
 
-    # with open(os.path.join(similarity_output_path, "results.txt"), "w") as f:
-    #     stats = []
-    #     for input_image in sorted(os.listdir(path=os.path.join(path, directory))):
-    #         base_image_path = os.path.join(vlad_inference_output_path, input_image.replace("tiff", "npy"))
-    #         base_image_encoding = np.load(base_image_path)
-    #         base_image_author = get_author(input_image)
-    #         stored_encodings = []
-    #         file_paths = []
-    #
-    #         for image_to_compare_to in sorted(os.listdir(vlad_inference_output_path)):
-    #             if image_to_compare_to.endswith(".npy") and image_to_compare_to != os.path.basename(
-    #                     base_image_path):
-    #                 file_path = os.path.join(vlad_inference_output_path, image_to_compare_to)
-    #                 stored_encodings.append(np.load(file_path))
-    #                 file_paths.append(image_to_compare_to)
-    #
-    #         stored_encodings = np.vstack(stored_encodings)
-    #         similarities = cosine_similarity(base_image_encoding, stored_encodings)[0]
-    #         indices = np.argsort(similarities)[::-1][:10]
-    #         most_similar_files = [file_paths[i].split('_')[0] for i in indices]
-    #         stats.append({
-    #             "author": base_image_author,
-    #             "top1": base_image_author in most_similar_files[:1],
-    #             "top5": base_image_author in most_similar_files[:5],
-    #             "top10": base_image_author in most_similar_files[:10]
-    #         })
-    #     f.write(json.dumps(stats, indent=4))
+    with open(os.path.join(similarity_output_path, "results.txt"), "w") as f:
+        stats = []
+        for input_image in sorted(os.listdir(path=os.path.join(path, directory))):
+            base_image_path = os.path.join(vlad_inference_output_path, input_image.replace("tiff", "npy"))
+            base_image_encoding = np.load(base_image_path)
+            base_image_author = get_author(input_image)
+            stored_encodings = []
+            file_paths = []
+
+            for image_to_compare_to in sorted(os.listdir(vlad_inference_output_path)):
+                if image_to_compare_to.endswith(".npy") and image_to_compare_to != os.path.basename(
+                        base_image_path):
+                    file_path = os.path.join(vlad_inference_output_path, image_to_compare_to)
+                    stored_encodings.append(np.load(file_path))
+                    file_paths.append(image_to_compare_to)
+
+            stored_encodings = np.vstack(stored_encodings)
+            similarities = cosine_similarity(base_image_encoding, stored_encodings)[0]
+            indices = np.argsort(similarities)[::-1][:10]
+            most_similar_files = [file_paths[i].split('_')[0] for i in indices]
+            stats.append({
+                "author": base_image_author,
+                "top1": base_image_author in most_similar_files[:1],
+                "top5": base_image_author in most_similar_files[:5],
+                "top10": base_image_author in most_similar_files[:10]
+            })
+        f.write(json.dumps(stats, indent=4))
 
     # ---------------------------------------------------------------------------------------------------
     # CALCULATE WRITER RETRIEVAL TABLE
