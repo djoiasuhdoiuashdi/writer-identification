@@ -32,12 +32,17 @@ def main():
     for i in range(500):
         train_split = []
         test_split = []
+        train_labels = []
+        test_labels = []
         for author, split_list in splits.items():
             rand_index = random.randint(0, len(split_list) - 1)
             train_split.extend(split_list[rand_index][0])
             test_split.extend(split_list[rand_index][1])
+            train_labels.extend([author] * len(split_list[rand_index][0]))
+            test_labels.extend([author] * len(split_list[rand_index][1]))
 
-        final_splits.append({"train": train_split, "test": test_split})
+        final_splits.append(
+            {"train": train_split, "test": test_split, "train_labels": train_labels, "test_labels": test_labels})
 
     with open("train_test_splits.json", "w") as f:
         json.dump(final_splits, f, indent=4)
