@@ -4,6 +4,7 @@ from collections import defaultdict
 import random
 import json
 import argparse
+from utils import get_author
 
 
 def main():
@@ -16,17 +17,15 @@ def main():
     author_files = defaultdict(list)
 
     for file in sorted(os.listdir(input_dir)):
-        author = file.split("_")[0]  # Extract author ID from filename
-        author_files[author].append(file.replace(".tiff", ".npy"))
+        author_files[get_author(file)].append(file.replace(".tiff", ".npy"))
 
     for list_of_files in author_files.values():
         combos = combinations(list_of_files, 2)
 
         for combo in combos:
             train_split = [image for image in combo]
-            author = train_split[0].split("_")[0]
             test_split = [f for f in list_of_files if f not in train_split]
-            splits[author].append((train_split, test_split))
+            splits[get_author(train_split[0])].append((train_split, test_split))
 
     final_splits = []
     for i in range(500):

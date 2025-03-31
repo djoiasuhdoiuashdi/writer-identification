@@ -16,6 +16,7 @@ import torch
 import retrieval_eval
 import itertools
 import argparse
+from utils import get_author
 
 WINDOW_SIZE = 32
 VLAD_NUM_CLUSTER = 128
@@ -79,7 +80,7 @@ def extract_patches_vlad(net, image_path, device):
 
 def main():
     parser = argparse.ArgumentParser(description="Process subfolder")
-    parser.add_argument("--directory", type=str, required=True, help="Directory to process")
+    parser.add_argument("directory", help="Directory to process")
     args = parser.parse_args()
     directory = args.directory
     path = "./extract_patches_input"
@@ -92,24 +93,24 @@ def main():
     output_path = os.path.join("extract_patches_output", directory)
     resnet_output_path = os.path.join("resnet20_output", directory)
 
-    if not os.path.exists("extract_patches_output"):
-        os.mkdir("extract_patches_output")
-    if not os.path.exists(output_path):
-        os.mkdir(output_path)
-    else:
-        shutil.rmtree(output_path)
-        os.mkdir(output_path)
-    subprocess.run(
-        [sys.executable, 'extract_patches.py', "--in_dir", input_path, "--out_dir", output_path, "--num_of_clusters",
-         f"{RESNET_NUM_CLUSTER}", "--centered", "True", "--black_pixel_thresh", f"{BLACK_PIXEL_THRESHOLD}",
-         "--white_pixel_thresh", f"{WHITE_PIXEL_THRESHOLD}", "--scale", "1"]
-        , stdout=None, stderr=None)
-    center_path = os.path.join(output_path, 'centers.pkl')
-    parameter_path = os.path.join(output_path, 'db-creation-parameters.json')
-    if os.path.exists(center_path):
-        os.remove(center_path)
-    if os.path.exists(parameter_path):
-        os.remove(parameter_path)
+    # if not os.path.exists("extract_patches_output"):
+    #     os.mkdir("extract_patches_output")
+    # if not os.path.exists(output_path):
+    #     os.mkdir(output_path)
+    # else:
+    #     shutil.rmtree(output_path)
+    #     os.mkdir(output_path)
+    # subprocess.run(
+    #     [sys.executable, 'extract_patches.py', "--in_dir", input_path, "--out_dir", output_path, "--num_of_clusters",
+    #      f"{RESNET_NUM_CLUSTER}", "--centered", "True", "--black_pixel_thresh", f"{BLACK_PIXEL_THRESHOLD}",
+    #      "--white_pixel_thresh", f"{WHITE_PIXEL_THRESHOLD}", "--scale", "1"]
+    #     , stdout=None, stderr=None)
+    # center_path = os.path.join(output_path, 'centers.pkl')
+    # parameter_path = os.path.join(output_path, 'db-creation-parameters.json')
+    # if os.path.exists(center_path):
+    #     os.remove(center_path)
+    # if os.path.exists(parameter_path):
+    #     os.remove(parameter_path)
 
     # ---------------------------------------------------------------------------------------------------
     # TRAIN RESNET
@@ -120,17 +121,17 @@ def main():
     if not os.path.exists(resnet_output_path):
         os.mkdir(resnet_output_path)
 
-    subprocess.run([sys.executable, 'train_resnet20.py',
-                    "--arch", "resnet20",
-                    "--workers", "8",
-                    "--epochs", "225",
-                    "--batch-size", "32",
-                    "--lr", "0.01",
-                    "--momentum", "0.95",
-                    "--weight-decay", "0.00065",
-                    "--output_dir", resnet_output_path,
-                    "--input_dir", output_path],
-                   stdout=None, stderr=None)
+    # subprocess.run([sys.executable, 'train_resnet20.py',
+    #                 "--arch", "resnet20",
+    #                 "--workers", "8",
+    #                 "--epochs", "225",
+    #                 "--batch-size", "32",
+    #                 "--lr", "0.01",
+    #                 "--momentum", "0.95",
+    #                 "--weight-decay", "0.00065",
+    #                 "--output_dir", resnet_output_path,
+    #                 "--input_dir", output_path],
+    #                stdout=None, stderr=None)
 
     # ---------------------------------------------------------------------------------------------------
     # TRAIN VLAD
@@ -188,7 +189,7 @@ def main():
     for input_image in sorted(os.listdir(path=os.path.join(path, directory))):
         base_image_path = os.path.join(vlad_inference_output_path, input_image.replace("tiff", "npy"))
         base_image_encoding = np.load(base_image_path)
-        base_image_author = input_image.split("_")[0]
+        base_image_author = get_author(input_image)
         stored_encodings.append(base_image_encoding)
         authors.append(base_image_author)
 
@@ -219,33 +220,33 @@ def main():
     if not os.path.exists(evaluation_result_path):
         os.makedirs(evaluation_result_path)
 
-    with open(os.path.join(similarity_output_path, "results.txt"), "w") as f:
-        stats = []
-        for input_image in sorted(os.listdir(path=os.path.join(path, directory))):
-            base_image_path = os.path.join(vlad_inference_output_path, input_image.replace("tiff", "npy"))
-            base_image_encoding = np.load(base_image_path)
-            base_image_author = input_image.split("_")[0]
-            stored_encodings = []
-            file_paths = []
-
-            for image_to_compare_to in sorted(os.listdir(vlad_inference_output_path)):
-                if image_to_compare_to.endswith(".npy") and image_to_compare_to != os.path.basename(
-                        base_image_path):
-                    file_path = os.path.join(vlad_inference_output_path, image_to_compare_to)
-                    stored_encodings.append(np.load(file_path))
-                    file_paths.append(image_to_compare_to)
-
-            stored_encodings = np.vstack(stored_encodings)
-            similarities = cosine_similarity(base_image_encoding, stored_encodings)[0]
-            indices = np.argsort(similarities)[::-1][:10]
-            most_similar_files = [file_paths[i].split('_')[0] for i in indices]
-            stats.append({
-                "author": base_image_author,
-                "top1": base_image_author in most_similar_files[:1],
-                "top5": base_image_author in most_similar_files[:5],
-                "top10": base_image_author in most_similar_files[:10]
-            })
-        f.write(json.dumps(stats, indent=4))
+    # with open(os.path.join(similarity_output_path, "results.txt"), "w") as f:
+    #     stats = []
+    #     for input_image in sorted(os.listdir(path=os.path.join(path, directory))):
+    #         base_image_path = os.path.join(vlad_inference_output_path, input_image.replace("tiff", "npy"))
+    #         base_image_encoding = np.load(base_image_path)
+    #         base_image_author = get_author(input_image)
+    #         stored_encodings = []
+    #         file_paths = []
+    #
+    #         for image_to_compare_to in sorted(os.listdir(vlad_inference_output_path)):
+    #             if image_to_compare_to.endswith(".npy") and image_to_compare_to != os.path.basename(
+    #                     base_image_path):
+    #                 file_path = os.path.join(vlad_inference_output_path, image_to_compare_to)
+    #                 stored_encodings.append(np.load(file_path))
+    #                 file_paths.append(image_to_compare_to)
+    #
+    #         stored_encodings = np.vstack(stored_encodings)
+    #         similarities = cosine_similarity(base_image_encoding, stored_encodings)[0]
+    #         indices = np.argsort(similarities)[::-1][:10]
+    #         most_similar_files = [file_paths[i].split('_')[0] for i in indices]
+    #         stats.append({
+    #             "author": base_image_author,
+    #             "top1": base_image_author in most_similar_files[:1],
+    #             "top5": base_image_author in most_similar_files[:5],
+    #             "top10": base_image_author in most_similar_files[:10]
+    #         })
+    #     f.write(json.dumps(stats, indent=4))
 
     # ---------------------------------------------------------------------------------------------------
     # CALCULATE WRITER RETRIEVAL TABLE
@@ -265,44 +266,39 @@ def main():
     top10_accuracy = (top10_count / total) * 100
 
     with open(evaluation_result_path + "/Retrieval.txt", "w") as f:
-        f.write(f"{round(top1_accuracy)} {round(top5_accuracy)} {round(top10_accuracy)} {round(mAP)}")
+        json.dump({"top1": round(top1_accuracy), "top5": round(top5_accuracy), "top10": round(top10_accuracy),
+                   "map": round(mAP)}, f, indent=4)
 
     # ----------------------------------------------------------------------------------------------------
     # WRITER CLASSIFICATION
     # ----------------------------------------------------------------------------------------------------
 
     print("Writer Classification: ", directory)
-    files = sorted(os.listdir(vlad_inference_output_path))
-
-    author_files = defaultdict(list)
-    for file in files:
-        author = file.split("_")[0]  # Extract author ID from filename
-        file_path = os.path.join(vlad_inference_output_path, file)
-        author_files[author].append(file_path)
-
-    splits = []
-    authors = author_files.keys()
-    index_combinations = itertools.combinations(range(4), 2)
-
-    for i, j in index_combinations:
-        train_images = []
-        test_images = []
-        train_labels = []
-        test_labels = []
-        for author in authors:
-            file_list = author_files[author]
-            train_images.append(np.load(file_list[i]))
-            train_images.append(np.load(file_list[j]))
-            train_labels.append(author)
-            train_labels.append(author)
-            test_files = [file_list[k] for k in range(len(file_list)) if k != i and k != j]
-            for test_file in test_files:
-                test_images.append(np.load(test_file))
-                test_labels.append(author)
-
-        splits.append((train_images, train_labels, test_images, test_labels))
+    combinations = []
+    with open("./train_test_splits.json", "r") as f:
+        combinations = json.load(f)
 
     split_results = []
+
+    cache = {}
+    for file in sorted(os.listdir(vlad_inference_output_path)):
+        cache[file] = np.load(os.path.join(vlad_inference_output_path, file))
+
+    splits = []
+    for combo in combinations:
+        training_set = []
+        test_set = []
+        test_labels = []
+        train_labels = []
+        for filepath in combo["train"]:
+            training_set.append(cache[filepath])
+        for filepath in combo["test"]:
+            test_set.append(cache[filepath])
+        for label in combo["train_labels"]:
+            train_labels.append(label)
+        for label in combo["test_labels"]:
+            test_labels.append(label)
+        splits.append((training_set, train_labels, test_set, test_labels))
 
     for training_set, training_labels, test_set, test_labels in splits:
         training_set = np.vstack(training_set)
@@ -324,12 +320,13 @@ def main():
         top1_accuracy = (top1_count / total) * 100
         top5_accuracy = (top5_count / total) * 100
         split_results.append((top1_accuracy, top5_accuracy))
+        print(f"Top1: {top1_accuracy}, Top5: {top5_accuracy}")
 
     avg_top1 = sum(r[0] for r in split_results) / len(split_results)
     avg_top5 = sum(r[1] for r in split_results) / len(split_results)
 
     with open(evaluation_result_path + "/Classification.txt", "w") as f:
-        f.write(f"{round(avg_top1)} {round(avg_top5)}")
+        json.dump({"top1": round(avg_top1), "top5": round(avg_top5)}, f, indent=4)
 
 
 if __name__ == "__main__":
