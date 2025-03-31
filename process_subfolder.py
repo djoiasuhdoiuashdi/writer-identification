@@ -124,11 +124,12 @@ def main():
     subprocess.run([sys.executable, 'train_resnet20.py',
                     "--arch", "resnet20",
                     "--workers", "8",
-                    "--epochs", "2",
+                    "--epochs", "2",  # to be set to 225
                     "--batch-size", "32",
                     "--lr", "0.01",
                     "--momentum", "0.95",
                     "--weight-decay", "0.00065",
+                    "--save-every", "1",  # to be removed
                     "--output_dir", resnet_output_path,
                     "--input_dir", output_path],
                    stdout=None, stderr=None)
