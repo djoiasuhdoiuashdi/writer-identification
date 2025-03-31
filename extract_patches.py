@@ -1,14 +1,17 @@
 import cv2
+import os
+
+os.environ['OPENBLAS_NUM_THREADS'] = '64'
 import numpy as np
 from joblib import Parallel, delayed
 import multiprocessing
-import os
 import glob
 import logging
 import sklearn.preprocessing
 from tqdm import tqdm
 
-OPENBLAS_NUM_THREADS = 1
+# OPENBLAS_NUM_THREADS = 1
+
 
 IMG_EXTENSIONS = [
     '.jpg', '.JPG', '.jpeg', '.JPEG',
