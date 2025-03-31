@@ -93,24 +93,24 @@ def main():
     output_path = os.path.join("extract_patches_output", directory)
     resnet_output_path = os.path.join("resnet20_output", directory)
 
-    if not os.path.exists("extract_patches_output"):
-        os.mkdir("extract_patches_output")
-    if not os.path.exists(output_path):
-        os.mkdir(output_path)
-    else:
-        shutil.rmtree(output_path)
-        os.mkdir(output_path)
-    subprocess.run(
-        [sys.executable, 'extract_patches.py', "--in_dir", input_path, "--out_dir", output_path, "--num_of_clusters",
-         f"{RESNET_NUM_CLUSTER}", "--centered", "True", "--black_pixel_thresh", f"{BLACK_PIXEL_THRESHOLD}",
-         "--white_pixel_thresh", f"{WHITE_PIXEL_THRESHOLD}", "--scale", "1"]
-        , stdout=None, stderr=None)
-    center_path = os.path.join(output_path, 'centers.pkl')
-    parameter_path = os.path.join(output_path, 'db-creation-parameters.json')
-    if os.path.exists(center_path):
-        os.remove(center_path)
-    if os.path.exists(parameter_path):
-        os.remove(parameter_path)
+    # if not os.path.exists("extract_patches_output"):
+    #     os.mkdir("extract_patches_output")
+    # if not os.path.exists(output_path):
+    #     os.mkdir(output_path)
+    # else:
+    #     shutil.rmtree(output_path)
+    #     os.mkdir(output_path)
+    # subprocess.run(
+    #     [sys.executable, 'extract_patches.py', "--in_dir", input_path, "--out_dir", output_path, "--num_of_clusters",
+    #      f"{RESNET_NUM_CLUSTER}", "--centered", "True", "--black_pixel_thresh", f"{BLACK_PIXEL_THRESHOLD}",
+    #      "--white_pixel_thresh", f"{WHITE_PIXEL_THRESHOLD}", "--scale", "1"]
+    #     , stdout=None, stderr=None)
+    # center_path = os.path.join(output_path, 'centers.pkl')
+    # parameter_path = os.path.join(output_path, 'db-creation-parameters.json')
+    # if os.path.exists(center_path):
+    #     os.remove(center_path)
+    # if os.path.exists(parameter_path):
+    #     os.remove(parameter_path)
 
     # ---------------------------------------------------------------------------------------------------
     # TRAIN RESNET
@@ -121,18 +121,18 @@ def main():
     if not os.path.exists(resnet_output_path):
         os.mkdir(resnet_output_path)
 
-    subprocess.run([sys.executable, 'train_resnet20.py',
-                    "--arch", "resnet20",
-                    "--workers", "8",
-                    "--epochs", "2",  # to be set to 225
-                    "--batch-size", "32",
-                    "--lr", "0.01",
-                    "--momentum", "0.95",
-                    "--weight-decay", "0.00065",
-                    "--save-every", "1",  # to be removed
-                    "--output_dir", resnet_output_path,
-                    "--input_dir", output_path],
-                   stdout=None, stderr=None)
+    # subprocess.run([sys.executable, 'train_resnet20.py',
+    #                 "--arch", "resnet20",
+    #                 "--workers", "32",
+    #                 "--epochs", "2",  # to be set to 225
+    #                 "--batch-size", "32",
+    #                 "--lr", "0.01",
+    #                 "--momentum", "0.95",
+    #                 "--weight-decay", "0.00065",
+    #                 "--save-every", "1",  # to be removed
+    #                 "--output_dir", resnet_output_path,
+    #                 "--input_dir", output_path],
+    #                stdout=None, stderr=None)
 
     # ---------------------------------------------------------------------------------------------------
     # TRAIN VLAD
