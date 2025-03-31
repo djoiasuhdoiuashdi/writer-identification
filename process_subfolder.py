@@ -124,7 +124,7 @@ def main():
     subprocess.run([sys.executable, 'train_resnet20.py',
                     "--arch", "resnet20",
                     "--workers", "8",
-                    "--epochs", "20",  # to be set to 225
+                    "--epochs", "2",  # to be set to 225
                     "--batch-size", "32",
                     "--lr", "0.01",
                     "--momentum", "0.95",
