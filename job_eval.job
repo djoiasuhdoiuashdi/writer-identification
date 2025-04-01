@@ -1,0 +1,48 @@
+#!/bin/bash
+#SBATCH --partition=zen3_0512_a100x2
+#SBATCH --qos=zen3_0512_a100x2
+#SBATCH --gres=gpu:1
+#SBATCH -J evaluate_binarization_on_grk50
+#SBATCH -t 01:00:00
+
+module load miniconda3/latest
+eval "$(conda shell.bash hook)"
+conda deactivate
+conda deactivate
+conda deactivate
+conda activate writer_id
+cd
+
+export OMP_NUM_THREADS=64
+export OPENBLAS_NUM_THREADS=64
+
+subfolders=(dplinknet_fmeasure \
+            dplinknet_pfmeasure \
+            dplinknet_psnr \
+            enhanced_dplinknet_fmeasure \
+            enhanced_dplinknet_pfmeasure \
+            enhanced_dplinknet_psnr \
+            enhanced_nafdpm_fmeasure \
+            enhanced_nafdpm_pfmeasure \
+            enhanced_nafdpm_psnr \
+            enhanced_robin_fmeasure \
+            enhanced_robin_pfmeasure \
+            enhanced_robin_psnr \
+            enhanced_unetbr \
+            GATOS \
+            nafdpm_fmeasure \
+            nafdpm_pfmeasure \
+            nafdpm_psnr \
+            NICK \
+            OTSU \
+            robin_fmeasure \
+            robin_pfmeasure \
+            robin_psnr \
+            SAUVOLA \
+            SU \
+            TRSINGH \
+            unetbr)
+
+for current_folder in "${subfolders[@]}"; do
+    python process_subfolder.py "$current_folder"
+done
