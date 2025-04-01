@@ -93,24 +93,24 @@ def main():
     output_path = os.path.join("extract_patches_output", directory)
     resnet_output_path = os.path.join("resnet20_output", directory)
 
-    if not os.path.exists("extract_patches_output"):
-        os.mkdir("extract_patches_output")
-    if not os.path.exists(output_path):
-        os.mkdir(output_path)
-    else:
-        shutil.rmtree(output_path)
-        os.mkdir(output_path)
-    subprocess.run(
-        [sys.executable, 'extract_patches.py', "--in_dir", input_path, "--out_dir", output_path, "--num_of_clusters",
-         f"{RESNET_NUM_CLUSTER}", "--centered", "True", "--black_pixel_thresh", f"{BLACK_PIXEL_THRESHOLD}",
-         "--white_pixel_thresh", f"{WHITE_PIXEL_THRESHOLD}", "--scale", "1"]
-        , stdout=None, stderr=None)
-    center_path = os.path.join(output_path, 'centers.pkl')
-    parameter_path = os.path.join(output_path, 'db-creation-parameters.json')
-    if os.path.exists(center_path):
-        os.remove(center_path)
-    if os.path.exists(parameter_path):
-        os.remove(parameter_path)
+    # if not os.path.exists("extract_patches_output"):
+    #     os.mkdir("extract_patches_output")
+    # if not os.path.exists(output_path):
+    #     os.mkdir(output_path)
+    # else:
+    #     shutil.rmtree(output_path)
+    #     os.mkdir(output_path)
+    # subprocess.run(
+    #     [sys.executable, 'extract_patches.py', "--in_dir", input_path, "--out_dir", output_path, "--num_of_clusters",
+    #      f"{RESNET_NUM_CLUSTER}", "--centered", "True", "--black_pixel_thresh", f"{BLACK_PIXEL_THRESHOLD}",
+    #      "--white_pixel_thresh", f"{WHITE_PIXEL_THRESHOLD}", "--scale", "1"]
+    #     , stdout=None, stderr=None)
+    # center_path = os.path.join(output_path, 'centers.pkl')
+    # parameter_path = os.path.join(output_path, 'db-creation-parameters.json')
+    # if os.path.exists(center_path):
+    #     os.remove(center_path)
+    # if os.path.exists(parameter_path):
+    #     os.remove(parameter_path)
 
     # ---------------------------------------------------------------------------------------------------
     # TRAIN RESNET
@@ -121,18 +121,18 @@ def main():
     if not os.path.exists(resnet_output_path):
         os.mkdir(resnet_output_path)
 
-    subprocess.run([sys.executable, 'train_resnet20.py',
-                    "--arch", "resnet20",
-                    "--workers", "32",
-                    "--epochs", "225",  # to be set to 225
-                    "--batch-size", "32",
-                    "--lr", "0.01",
-                    "--momentum", "0.95",
-                    "--weight-decay", "0.00065",
-                    # "--save-every", "1",  # to be removed
-                    "--output_dir", resnet_output_path,
-                    "--input_dir", output_path],
-                   stdout=None, stderr=None)
+    # subprocess.run([sys.executable, 'train_resnet20.py',
+    #                 "--arch", "resnet20",
+    #                 "--workers", "32",
+    #                 "--epochs", "225",  # to be set to 225
+    #                 "--batch-size", "32",
+    #                 "--lr", "0.01",
+    #                 "--momentum", "0.95",
+    #                 "--weight-decay", "0.00065",
+    #                 # "--save-every", "1",  # to be removed
+    #                 "--output_dir", resnet_output_path,
+    #                 "--input_dir", output_path],
+    #                stdout=None, stderr=None)
 
     # ---------------------------------------------------------------------------------------------------
     # TRAIN VLAD
@@ -183,12 +183,12 @@ def main():
         features = extract_patches_vlad(net,
                                         os.path.join(path, directory, input_image), device)
         vlad_output = VLAD.encode(features)
-        np.save(os.path.join(vlad_inference_output_path, input_image.replace("tiff", "") + "npy"), vlad_output)
+        np.save(os.path.join(vlad_inference_output_path, os.path.splitext(input_image)[0] + ".npy"), vlad_output)
 
     stored_encodings = []
     authors = []
     for input_image in sorted(os.listdir(path=os.path.join(path, directory))):
-        base_image_path = os.path.join(vlad_inference_output_path, input_image.replace("tiff", "npy"))
+        base_image_path = os.path.join(vlad_inference_output_path, os.path.splitext(input_image)[0] + ".npy")
         base_image_encoding = np.load(base_image_path)
         base_image_author = get_author(input_image)
         stored_encodings.append(base_image_encoding)
@@ -223,7 +223,7 @@ def main():
     with open(os.path.join(similarity_output_path, "results.txt"), "w") as f:
         stats = []
         for input_image in sorted(os.listdir(path=os.path.join(path, directory))):
-            base_image_path = os.path.join(vlad_inference_output_path, input_image.replace("tiff", "npy"))
+            base_image_path = os.path.join(vlad_inference_output_path, os.path.splitext(input_image)[0] + ".npy")
             base_image_encoding = np.load(base_image_path)
             base_image_author = get_author(input_image)
             stored_encodings = []
